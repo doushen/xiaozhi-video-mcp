@@ -93,13 +93,13 @@ const htmlContent = `<!DOCTYPE html>
   <div id="status" class="status disconnected">未连接</div>
 
   <div class="video-container">
-    <video id="video" controls>
+    <video id="video" controls muted playsinline>
       <source src="" type="video/mp4">
       您的浏览器不支持视频播放
     </video>
   </div>
 
-  <div class="info" id="info">等待播放指令...</div>
+  <div class="info" id="info">点击页面任意位置激活音频，等待播放指令...</div>
 
   <div class="log" id="log"></div>
 
@@ -110,6 +110,16 @@ const htmlContent = `<!DOCTYPE html>
     const logEl = document.getElementById('log');
 
     let ws;
+    let audioUnlocked = false;
+
+    // 点击页面解锁音频
+    document.body.addEventListener('click', () => {
+      if (!audioUnlocked) {
+        video.muted = false;
+        audioUnlocked = true;
+        addLog('音频已激活，可以正常播放声音', 'success');
+      }
+    }, { once: false });
 
     function addLog(message, type = 'info') {
       const item = document.createElement('div');
@@ -160,14 +170,21 @@ const htmlContent = `<!DOCTYPE html>
         addLog('暂停', 'info');
       } else if (data.type === 'resume') {
         video.play();
-        infoEl.textContent = '播放中...';
-        addLog('恢复播放', 'success');
+        infoEl.textContent = audioUnlocked ? '播放中...' : '播放中... (静音模式)';
+        addLog(audioUnlocked ? '恢复播放' : '恢复播放 (静音模式，点击页面激活音频)', 'success');
       }
     }
 
     function playVideo(src, volume = 1) {
       video.src = src;
-      video.volume = volume;
+      // 如果音频未解锁，保持静音
+      if (!audioUnlocked) {
+        video.muted = true;
+        addLog('提示: 点击页面可激活音频', 'info');
+      } else {
+        video.muted = false;
+        video.volume = volume;
+      }
       video.play().then(() => {
         infoEl.textContent = '播放: ' + src;
         addLog('播放: ' + src, 'success');
