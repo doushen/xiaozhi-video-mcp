@@ -16,6 +16,9 @@ import { z } from 'zod';
 const HTTP_PORT = 3000;
 const WS_PORT = 3001;
 
+/** 默认测试视频 - 钢铁侠预告片 */
+const DEFAULT_VIDEO = 'https://media.w3.org/2010/05/sintel/trailer.mp4';
+
 function log(level: string, message: string): void {
   console.error(`[${new Date().toISOString()}] [${level}] ${message}`);
 }
@@ -285,25 +288,28 @@ const server = new McpServer({
 // play_video 工具
 server.tool(
   'play_video',
-  '播放指定的视频文件。支持本地视频路径和在线视频地址。',
+  '播放指定的视频文件。支持本地视频路径和在线视频地址。不传 video_path 则播放默认测试视频。',
   {
-    video_path: z.string().min(1).describe('视频文件的路径或在线地址'),
+    video_path: z.string().optional().describe('视频文件的路径或在线地址，不传则播放默认视频'),
     autoplay: z.boolean().optional().default(true).describe('是否自动播放'),
     volume: z.number().min(0).max(1).optional().default(1).describe('音量 (0-1)')
   },
   async ({ video_path, autoplay = true, volume = 1 }) => {
-    log('INFO', `播放视频: ${video_path}`);
+    // 如果没传视频路径，使用默认视频
+    const actualVideoPath = video_path || DEFAULT_VIDEO;
+
+    log('INFO', `播放视频: ${actualVideoPath}`);
 
     currentState = {
       playing: autoplay,
-      videoPath: video_path,
+      videoPath: actualVideoPath,
       currentTime: 0,
       duration: 0,
       volume
     };
 
     // 广播到 Web 播放器
-    const clientCount = broadcastPlay(video_path, volume);
+    const clientCount = broadcastPlay(actualVideoPath, volume);
 
     return {
       content: [
@@ -311,8 +317,9 @@ server.tool(
           type: 'text' as const,
           text: JSON.stringify({
             success: true,
-            message: `视频播放已触发: ${video_path}`,
-            videoPath: video_path,
+            message: `视频播放已触发: ${actualVideoPath}`,
+            videoPath: actualVideoPath,
+            isDefault: !video_path,
             webClients: clientCount,
             state: currentState
           }, null, 2)
@@ -405,6 +412,40 @@ server.tool(
         type: 'text' as const,
         text: JSON.stringify({
           success: true,
+          state: currentState
+        }, null, 2)
+      }]
+    };
+  }
+);
+
+// play_default_video 工具 - 播放默认测试视频
+server.tool(
+  'play_default_video',
+  '播放默认测试视频（钢铁侠预告片）',
+  {},
+  async () => {
+    log('INFO', `播放默认视频: ${DEFAULT_VIDEO}`);
+
+    currentState = {
+      playing: true,
+      videoPath: DEFAULT_VIDEO,
+      currentTime: 0,
+      duration: 0,
+      volume: 1
+    };
+
+    // 广播到 Web 播放器
+    const clientCount = broadcastPlay(DEFAULT_VIDEO, 1);
+
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify({
+          success: true,
+          message: '默认视频播放已触发',
+          videoPath: DEFAULT_VIDEO,
+          webClients: clientCount,
           state: currentState
         }, null, 2)
       }]
