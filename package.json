@@ -1,0 +1,37 @@
+{
+  "name": "xiaozhi-mcp-server",
+  "version": "1.0.0",
+  "description": "小智智能体 MCP 服务端 - 提供视频播放能力",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "start": "npm run build && node dist/mcp-pipe.js",
+    "dev": "tsx src/mcp-pipe.ts",
+    "watch": "tsx watch src/mcp-pipe.ts",
+    "server": "tsx src/video-server.ts"
+  },
+  "keywords": [
+    "mcp",
+    "xiaozhi",
+    "video-player",
+    "websocket"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.10.0",
+    "ws": "^8.18.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "@types/ws": "^8.5.14",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
