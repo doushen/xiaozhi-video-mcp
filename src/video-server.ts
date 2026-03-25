@@ -305,7 +305,7 @@ const server = new McpServer({
 // play_video 工具
 server.tool(
   'play_video',
-  '播放指定的视频文件。支持本地视频路径和在线视频地址。不传 video_path 则播放默认测试视频。',
+  '播放视频。当用户说"播放视频"、"看视频"或提供视频地址时调用此工具。不传参数则播放默认测试视频。',
   {
     video_path: z.string().optional().describe('视频文件的路径或在线地址，不传则播放默认视频'),
     autoplay: z.boolean().optional().default(true).describe('是否自动播放'),
@@ -349,7 +349,7 @@ server.tool(
 // pause_video 工具
 server.tool(
   'pause_video',
-  '暂停当前正在播放的视频',
+  '暂停视频播放。当用户说"暂停"、"停止播放"、"别放了"等时调用此工具。',
   {},
   async () => {
     log('INFO', '暂停视频');
@@ -385,7 +385,7 @@ server.tool(
 // resume_video 工具
 server.tool(
   'resume_video',
-  '恢复播放已暂停的视频',
+  '继续播放视频。当用户说"继续播放"、"恢复"、"接着放"等时调用此工具。',
   {},
   async () => {
     log('INFO', '恢复播放');
@@ -421,7 +421,7 @@ server.tool(
 // get_video_state 工具
 server.tool(
   'get_video_state',
-  '获取当前视频播放状态',
+  '获取当前视频播放状态。当用户询问"视频状态"、"播放到哪了"等时调用此工具。',
   {},
   async () => {
     return {
@@ -439,7 +439,7 @@ server.tool(
 // play_default_video 工具 - 播放默认测试视频
 server.tool(
   'play_default_video',
-  '播放默认测试视频（钢铁侠预告片）',
+  '播放默认测试视频。当用户说"播放视频"但没有指定具体视频时调用此工具。',
   {},
   async () => {
     log('INFO', `播放默认视频: ${DEFAULT_VIDEO}`);
