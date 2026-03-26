@@ -16,8 +16,22 @@ import { z } from 'zod';
 const HTTP_PORT = 3000;
 const WS_PORT = 3001;
 
-/** 默认测试视频 - 钢铁侠预告片 */
-const DEFAULT_VIDEO = 'https://media.w3.org/2010/05/sintel/trailer.mp4';
+/** 默认播放列表 - 10个测试视频 */
+const PLAYLIST = [
+  { title: 'Sintel 预告片', url: 'https://media.w3.org/2010/05/sintel/trailer.mp4' },
+  { title: 'Big Buck Bunny', url: 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4' },
+  { title: 'Elephant Dream', url: 'https://media.w3.org/2010/05/video/movie_300.mp4' },
+  { title: 'Jellyfish 视频', url: 'https://media.w3.org/2010/05/bunny/movie.mp4' },
+  { title: '测试视频 5', url: 'https://www.w3schools.com/html/mov_bbb.mp4' },
+  { title: '测试视频 6', url: 'https://media.w3.org/2010/05/sintel/trailer.480p.mp4' },
+  { title: '测试视频 7', url: 'https://media.w3.org/2010/05/bunny/trailer.mp4' },
+  { title: '测试视频 8', url: 'https://media.w3.org/2010/05/bunny/movie.mp4' },
+  { title: '测试视频 9', url: 'https://media.w3.org/2010/05/video/movie.mp4' },
+  { title: '测试视频 10', url: 'https://media.w3.org/2010/05/sintel/movie.mp4' }
+];
+
+/** 默认视频（播放列表第一项） */
+const DEFAULT_VIDEO = PLAYLIST[0].url;
 
 function log(level: string, message: string): void {
   console.error(`[${new Date().toISOString()}] [${level}] ${message}`);
@@ -55,11 +69,20 @@ const htmlContent = `<!DOCTYPE html>
     .status {
       padding: 10px 20px;
       border-radius: 20px;
-      margin-bottom: 20px;
+      margin-bottom: 15px;
       font-size: 0.9rem;
     }
     .status.connected { background: #00b894; }
     .status.disconnected { background: #d63031; }
+    .playlist-info {
+      background: rgba(255,255,255,0.1);
+      padding: 10px 20px;
+      border-radius: 10px;
+      margin-bottom: 15px;
+      text-align: center;
+    }
+    .playlist-info .title { font-size: 1.1rem; font-weight: bold; margin-bottom: 5px; }
+    .playlist-info .index { font-size: 0.85rem; opacity: 0.7; }
     .video-container {
       width: 100%;
       max-width: 900px;
@@ -69,6 +92,22 @@ const htmlContent = `<!DOCTYPE html>
       box-shadow: 0 10px 40px rgba(0,0,0,0.5);
     }
     video { width: 100%; display: block; background: #000; min-height: 400px; }
+    .nav-buttons {
+      display: flex;
+      gap: 15px;
+      margin-top: 15px;
+    }
+    .nav-btn {
+      padding: 12px 30px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 1rem;
+      transition: transform 0.2s, background 0.2s;
+    }
+    .nav-btn:hover { transform: translateY(-2px); }
+    .nav-btn.prev { background: #6c5ce7; color: #fff; }
+    .nav-btn.next { background: #00b894; color: #fff; }
     .info { margin-top: 15px; text-align: center; opacity: 0.7; }
     .log {
       margin-top: 20px;
@@ -92,11 +131,21 @@ const htmlContent = `<!DOCTYPE html>
   <h1>🎬 小智视频播放器</h1>
   <div id="status" class="status disconnected">未连接</div>
 
+  <div class="playlist-info" id="playlistInfo" style="display: none;">
+    <div class="title" id="videoTitle">-</div>
+    <div class="index" id="videoIndex">-</div>
+  </div>
+
   <div class="video-container">
     <video id="video" controls muted playsinline>
       <source src="" type="video/mp4">
       您的浏览器不支持视频播放
     </video>
+  </div>
+
+  <div class="nav-buttons">
+    <button class="nav-btn prev" onclick="requestPrev()">⏮ 上一个</button>
+    <button class="nav-btn next" onclick="requestNext()">下一个 ⏭</button>
   </div>
 
   <div class="info" id="info">点击页面任意位置激活音频，等待播放指令...</div>
@@ -108,6 +157,9 @@ const htmlContent = `<!DOCTYPE html>
     const statusEl = document.getElementById('status');
     const infoEl = document.getElementById('info');
     const logEl = document.getElementById('log');
+    const playlistInfo = document.getElementById('playlistInfo');
+    const videoTitleEl = document.getElementById('videoTitle');
+    const videoIndexEl = document.getElementById('videoIndex');
 
     let ws;
     let audioUnlocked = false;
@@ -163,7 +215,7 @@ const htmlContent = `<!DOCTYPE html>
 
     function handleCommand(data) {
       if (data.type === 'play') {
-        playVideo(data.video_path, data.volume);
+        playVideo(data.video_path, data.volume, data.playlistIndex, data.playlistTitle);
       } else if (data.type === 'pause') {
         video.pause();
         infoEl.textContent = '已暂停';
@@ -175,7 +227,7 @@ const htmlContent = `<!DOCTYPE html>
       }
     }
 
-    function playVideo(src, volume = 1) {
+    function playVideo(src, volume = 1, playlistIndex, playlistTitle) {
       video.src = src;
       // 如果音频未解锁，保持静音
       if (!audioUnlocked) {
@@ -185,13 +237,39 @@ const htmlContent = `<!DOCTYPE html>
         video.muted = false;
         video.volume = volume;
       }
+
+      // 更新播放列表信息显示
+      if (playlistTitle !== undefined || playlistIndex !== undefined) {
+        playlistInfo.style.display = 'block';
+        videoTitleEl.textContent = playlistTitle || '未知视频';
+        videoIndexEl.textContent = playlistIndex !== undefined ? '第 ' + (playlistIndex + 1) + ' / 10 个视频' : '';
+      } else {
+        playlistInfo.style.display = 'none';
+      }
+
       video.play().then(() => {
-        infoEl.textContent = '播放: ' + src;
-        addLog('播放: ' + src, 'success');
+        infoEl.textContent = '播放: ' + (playlistTitle || src);
+        addLog('播放: ' + (playlistTitle || src), 'success');
       }).catch(err => {
         infoEl.textContent = '播放失败: ' + err.message;
         addLog('播放失败: ' + err.message, 'error');
       });
+    }
+
+    // 请求上一个视频（通知服务端）
+    function requestPrev() {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        addLog('请求上一个视频...', 'info');
+        // 注意：这里只是记录日志，实际切换由小智智能体调用工具完成
+      }
+    }
+
+    // 请求下一个视频（通知服务端）
+    function requestNext() {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        addLog('请求下一个视频...', 'info');
+        // 注意：这里只是记录日志，实际切换由小智智能体调用工具完成
+      }
     }
 
     video.onended = () => {
@@ -244,11 +322,13 @@ function startWebServer(): void {
 // 广播函数
 // ============================================================
 
-function broadcastPlay(videoPath: string, volume: number = 1): number {
+function broadcastPlay(videoPath: string, volume: number = 1, playlistIndex?: number, playlistTitle?: string): number {
   const message = JSON.stringify({
     type: 'play',
     video_path: videoPath,
-    volume
+    volume,
+    playlistIndex,
+    playlistTitle
   });
 
   let count = 0;
@@ -288,6 +368,8 @@ function broadcastResume(): void {
 let currentState = {
   playing: false,
   videoPath: null as string | null,
+  videoTitle: null as string | null,
+  playlistIndex: -1,  // 当前播放索引，-1 表示不在播放列表中
   currentTime: 0,
   duration: 0,
   volume: 1
@@ -312,21 +394,39 @@ server.tool(
     volume: z.number().min(0).max(1).optional().default(1).describe('音量 (0-1)')
   },
   async ({ video_path, autoplay = true, volume = 1 }) => {
-    // 如果没传视频路径，使用默认视频
-    const actualVideoPath = video_path || DEFAULT_VIDEO;
+    // 如果没传视频路径，播放播放列表第一个
+    let actualVideoPath: string;
+    let videoTitle: string | null = null;
+    let playlistIndex = -1;
 
-    log('INFO', `播放视频: ${actualVideoPath}`);
+    if (!video_path) {
+      actualVideoPath = PLAYLIST[0].url;
+      videoTitle = PLAYLIST[0].title;
+      playlistIndex = 0;
+    } else {
+      actualVideoPath = video_path;
+      // 检查是否在播放列表中
+      const foundIndex = PLAYLIST.findIndex(v => v.url === video_path);
+      if (foundIndex >= 0) {
+        videoTitle = PLAYLIST[foundIndex].title;
+        playlistIndex = foundIndex;
+      }
+    }
+
+    log('INFO', `播放视频: ${videoTitle || actualVideoPath}`);
 
     currentState = {
       playing: autoplay,
       videoPath: actualVideoPath,
+      videoTitle,
+      playlistIndex,
       currentTime: 0,
       duration: 0,
       volume
     };
 
     // 广播到 Web 播放器
-    const clientCount = broadcastPlay(actualVideoPath, volume);
+    const clientCount = broadcastPlay(actualVideoPath, volume, playlistIndex >= 0 ? playlistIndex : undefined, videoTitle || undefined);
 
     return {
       content: [
@@ -334,8 +434,13 @@ server.tool(
           type: 'text' as const,
           text: JSON.stringify({
             success: true,
-            message: `视频播放已触发: ${actualVideoPath}`,
+            message: videoTitle
+              ? `正在播放: ${videoTitle}${playlistIndex >= 0 ? ` (第 ${playlistIndex + 1}/${PLAYLIST.length} 个)` : ''}`
+              : `视频播放已触发: ${actualVideoPath}`,
             videoPath: actualVideoPath,
+            videoTitle,
+            playlistIndex,
+            playlistTotal: PLAYLIST.length,
             isDefault: !video_path,
             webClients: clientCount,
             state: currentState
@@ -436,34 +541,159 @@ server.tool(
   }
 );
 
-// play_default_video 工具 - 播放默认测试视频
+// play_default_video 工具 - 播放默认测试视频（播放列表第一项）
 server.tool(
   'play_default_video',
-  '播放默认测试视频。当用户说"播放视频"但没有指定具体视频时调用此工具。',
+  '播放默认视频（播放列表第一项）。当用户说"播放视频"但没有指定具体视频时调用此工具。',
   {},
   async () => {
-    log('INFO', `播放默认视频: ${DEFAULT_VIDEO}`);
+    const index = 0;
+    const video = PLAYLIST[index];
+    log('INFO', `播放播放列表第 ${index + 1} 个视频: ${video.title}`);
 
     currentState = {
       playing: true,
-      videoPath: DEFAULT_VIDEO,
+      videoPath: video.url,
+      videoTitle: video.title,
+      playlistIndex: index,
       currentTime: 0,
       duration: 0,
       volume: 1
     };
 
-    // 广播到 Web 播放器
-    const clientCount = broadcastPlay(DEFAULT_VIDEO, 1);
+    const clientCount = broadcastPlay(video.url, 1, index, video.title);
 
     return {
       content: [{
         type: 'text' as const,
         text: JSON.stringify({
           success: true,
-          message: '默认视频播放已触发',
-          videoPath: DEFAULT_VIDEO,
+          message: `正在播放: ${video.title} (第 ${index + 1}/${PLAYLIST.length} 个)`,
+          videoPath: video.url,
+          videoTitle: video.title,
+          playlistIndex: index,
+          playlistTotal: PLAYLIST.length,
           webClients: clientCount,
           state: currentState
+        }, null, 2)
+      }]
+    };
+  }
+);
+
+// next_video 工具 - 播放下一个视频
+server.tool(
+  'next_video',
+  '播放下一个视频。当用户说"下一个视频"、"下一集"、"切歌"等时调用此工具。',
+  {},
+  async () => {
+    log('INFO', '播放下一个视频');
+
+    // 如果当前不在播放列表中，从第一个开始
+    let nextIndex = currentState.playlistIndex + 1;
+    if (nextIndex >= PLAYLIST.length) {
+      nextIndex = 0; // 循环到第一个
+    }
+
+    const video = PLAYLIST[nextIndex];
+    log('INFO', `切换到播放列表第 ${nextIndex + 1} 个视频: ${video.title}`);
+
+    currentState = {
+      playing: true,
+      videoPath: video.url,
+      videoTitle: video.title,
+      playlistIndex: nextIndex,
+      currentTime: 0,
+      duration: 0,
+      volume: currentState.volume
+    };
+
+    const clientCount = broadcastPlay(video.url, currentState.volume, nextIndex, video.title);
+
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify({
+          success: true,
+          message: `正在播放: ${video.title} (第 ${nextIndex + 1}/${PLAYLIST.length} 个)`,
+          videoPath: video.url,
+          videoTitle: video.title,
+          playlistIndex: nextIndex,
+          playlistTotal: PLAYLIST.length,
+          webClients: clientCount,
+          state: currentState
+        }, null, 2)
+      }]
+    };
+  }
+);
+
+// previous_video 工具 - 播放上一个视频
+server.tool(
+  'previous_video',
+  '播放上一个视频。当用户说"上一个视频"、"上一集"、"回放上一个"等时调用此工具。',
+  {},
+  async () => {
+    log('INFO', '播放上一个视频');
+
+    // 如果当前不在播放列表中，从最后一个开始
+    let prevIndex = currentState.playlistIndex - 1;
+    if (prevIndex < 0) {
+      prevIndex = PLAYLIST.length - 1; // 循环到最后一个
+    }
+
+    const video = PLAYLIST[prevIndex];
+    log('INFO', `切换到播放列表第 ${prevIndex + 1} 个视频: ${video.title}`);
+
+    currentState = {
+      playing: true,
+      videoPath: video.url,
+      videoTitle: video.title,
+      playlistIndex: prevIndex,
+      currentTime: 0,
+      duration: 0,
+      volume: currentState.volume
+    };
+
+    const clientCount = broadcastPlay(video.url, currentState.volume, prevIndex, video.title);
+
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify({
+          success: true,
+          message: `正在播放: ${video.title} (第 ${prevIndex + 1}/${PLAYLIST.length} 个)`,
+          videoPath: video.url,
+          videoTitle: video.title,
+          playlistIndex: prevIndex,
+          playlistTotal: PLAYLIST.length,
+          webClients: clientCount,
+          state: currentState
+        }, null, 2)
+      }]
+    };
+  }
+);
+
+// get_playlist 工具 - 获取播放列表
+server.tool(
+  'get_playlist',
+  '获取播放列表。当用户说"播放列表"、"有哪些视频"、"视频列表"等时调用此工具。',
+  {},
+  async () => {
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify({
+          success: true,
+          playlist: PLAYLIST.map((v, i) => ({
+            index: i + 1,
+            title: v.title,
+            url: v.url,
+            isCurrent: i === currentState.playlistIndex
+          })),
+          currentIndex: currentState.playlistIndex,
+          total: PLAYLIST.length
         }, null, 2)
       }]
     };
